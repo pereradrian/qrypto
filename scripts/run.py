@@ -7,4 +7,4 @@ if __name__ == '__main__':
     js = r.json()
     price = js["data"]["statistics"]["price"]
 
-    pprint(js)
+    pprint(price)

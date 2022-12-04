@@ -1,9 +1,10 @@
 # This is a module for download historical data from www.coinmarketcap.com
 import time
-import numpy as np
+import pandas as pd
 import pickle
 import requests
 from qrypto.config import URL_BASE
+from qrypto.tools import date_to_seconds
 from typing import Optional
 
 
@@ -124,8 +125,8 @@ class CoinMarketCap:
 
     def get_historical_data(self,
                             currency_id: int,
-                            start_time: Optional[int] = None,
-                            end_time: Optional[int] = None):
+                            start_time: Optional[str] = None,
+                            end_time: Optional[str] = None):
         """
         Function to get historical data for a currency.
 
@@ -139,46 +140,54 @@ class CoinMarketCap:
             from qrypto import CoinMarketCap
 
             cmp = CoinMarketCap(cash_id=2781)
-            data = cmp.get_historical_data(currency_id=1)  # id = 1 is BTC
+            data = cmp.get_historical_data(currency_id=1,             # id = 1 is BTC
+                                           start_time='2022-12-01',
+                                           end_time='2022-12-03')
 
             Response:
             ```
-            { 'data': { 'id': 1,
-                        'name': 'Bitcoin',
-                        'quotes': [ { 'quote': { 'close': 17088.6604094023,
-                                                 'high': 17088.6604094023,
-                                                 'low': 16877.8815958777,
-                                                 'marketCap': 328491679165.28,
-                                                 'open': 16968.6832614793,
-                                                 'timestamp': '2022-12-02T23:59:59.999Z',
-                                                 'volume': 19539705127.46},
-                                      'timeClose': '2022-12-02T23:59:59.999Z',
-                                      'timeHigh': '2022-12-02T23:59:00.000Z',
-                                      'timeLow': '2022-12-02T14:09:00.000Z',
-                                      'timeOpen': '2022-12-02T00:00:00.000Z'}],
-                        'symbol': 'BTC'},
-              'status': { 'credit_count': 0,
-                          'elapsed': '4',
-                          'error_code': '0',
-                          'error_message': 'SUCCESS',
-                          'timestamp': '2022-12-03T11:01:23.064Z'}}
+                                open          high           low         close        volume     marketCap symbol
+            date
+            2022-12-01  17168.002138  17197.497253  16888.387888  16967.133667  2.289539e+10  3.261421e+11    BTC
+            2022-12-02  16968.683261  17088.660409  16877.881596  17088.660409  1.953971e+10  3.284917e+11    BTC
+            2022-12-03  17090.098485  17116.040806  16888.140807  16908.236795  1.621778e+10  3.250372e+11    BTC
             ```
 
         """
-        if end_time is None:
+
+        if not(end_time is None):
+            end_time = date_to_seconds(end_time)
+        else:
             end_time = int(time.time())
-        if start_time is None:
-            start_time = end_time - 2*24*60*60
+
+        if not(start_time is None):
+            start_time = date_to_seconds(start_time)
+        else:
+            start_time = end_time - 2 * 24 * 60 * 60
 
         # Create the url for historical endpoint
         _url = f'{self._url}historical?id={currency_id}&convertId={self._cash_id}'\
                f'&timeStart={start_time}&timeEnd={end_time}'
 
-        return self._get_response(url=_url)
+        return self._dict_to_dataframe(self._get_response(url=_url))
+
+    def _dict_to_dataframe(self, x: dict):
+        """Function to parse historical data from json to dataframe."""
+        if len(x) > 0:
+            _df_ = pd.DataFrame([a['quote'] for a in x['data']['quotes']])
+            _df_['timestamp'] = pd.to_datetime(_df_['timestamp'].apply(lambda x: str(x).split('T')[0]))
+            _df_['symbol'] = x['data']['symbol']
+            return _df_.rename(columns={'timestamp': 'date'}).set_index('date')
+        else:
+            return None
 
 
 if __name__ == '__main__':
     from pprint import pprint
+
+    pd.set_option('display.max_rows', 500)
+    pd.set_option('display.max_columns', 500)
+    pd.set_option('display.width', 1000)
 
     with open('../symbols.pkl', 'rb') as file:
         symbols = pickle.load(file)
@@ -186,13 +195,12 @@ if __name__ == '__main__':
     print(symbols['USD'])  # 2781
 
     broker = CoinMarketCap(cash_id=symbols['USD'])
-    my_data = broker.get_detail(currency_id=1)
-    # my_data = broker.get_historical_data(currency_id=symbols['BTC'])
-    pprint(my_data, indent=2)
+    # my_data = broker.get_detail(currency_id=1)
+    # pprint(my_data, indent=2)
 
-
-
-
+    df = broker.get_historical_data(currency_id=symbols['BTC'], start_time='2022-12-01',
+                                    end_time='2022-12-03')
+    print(df)
 
 
 
